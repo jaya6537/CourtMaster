@@ -1,30 +1,72 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { Booking } from '../types';
+import { Database, Trash2, RefreshCw } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
-    const [bookings] = useState<Booking[]>(db.getBookings());
+    const [bookings, setBookings] = useState<Booking[]>([]);
     const [activeTab, setActiveTab] = useState<'bookings' | 'settings'>('bookings');
+    const [isLoading, setIsLoading] = useState(false);
+
+    const refreshData = () => {
+        setIsLoading(true);
+        // Simulate network delay slightly for realism
+        setTimeout(() => {
+            setBookings(db.getBookings());
+            setIsLoading(false);
+        }, 300);
+    };
+
+    useEffect(() => {
+        refreshData();
+    }, []);
+
+    const handleReset = () => {
+        if (confirm('Are you sure you want to delete all bookings? This cannot be undone.')) {
+            db.reset();
+            refreshData();
+        }
+    };
 
     const totalRevenue = bookings.reduce((sum, b) => sum + b.pricing.total, 0);
 
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 min-h-[600px]">
-            <div className="border-b border-slate-200 p-6 flex items-center justify-between">
-                <h2 className="text-2xl font-bold font-display text-slate-900">Admin Dashboard</h2>
-                <div className="flex bg-slate-100 p-1 rounded-lg">
+            <div className="border-b border-slate-200 p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h2 className="text-2xl font-bold font-display text-slate-900">Admin Dashboard</h2>
+                    <div className="flex items-center gap-2 mt-1">
+                        <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded text-xs font-medium text-green-700">
+                            <Database className="w-3 h-3" />
+                            <span>Browser DB Connected</span>
+                        </div>
+                        <span className="text-slate-400 text-xs">|</span>
+                        <span className="text-slate-500 text-xs">LocalStorage Persistence Active</span>
+                    </div>
+                </div>
+                
+                <div className="flex gap-3">
                     <button 
-                        onClick={() => setActiveTab('bookings')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'bookings' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+                         onClick={refreshData}
+                         className="p-2 text-slate-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition"
+                         title="Refresh Data"
                     >
-                        Bookings
+                        <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
                     </button>
-                    <button 
-                        onClick={() => setActiveTab('settings')}
-                        className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'settings' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
-                    >
-                        Config
-                    </button>
+                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                        <button 
+                            onClick={() => setActiveTab('bookings')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'bookings' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+                        >
+                            Bookings
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('settings')}
+                            className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'settings' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-600 hover:text-slate-900'}`}
+                        >
+                            Config
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -50,17 +92,17 @@ export const AdminPanel: React.FC = () => {
                             <table className="w-full text-sm text-left">
                                 <thead className="text-xs text-slate-600 uppercase bg-slate-50 border-b border-slate-200">
                                     <tr>
-                                        <th className="px-4 py-3 font-semibold">ID</th>
-                                        <th className="px-4 py-3 font-semibold">Date</th>
-                                        <th className="px-4 py-3 font-semibold">Time</th>
-                                        <th className="px-4 py-3 font-semibold">Court</th>
-                                        <th className="px-4 py-3 font-semibold">Extras</th>
-                                        <th className="px-4 py-3 text-right font-semibold">Amount</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-700">ID</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-700">Date</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-700">Time</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-700">Court</th>
+                                        <th className="px-4 py-3 font-semibold text-slate-700">Extras</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-slate-700">Amount</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white">
                                     {bookings.length === 0 ? (
-                                        <tr><td colSpan={6} className="text-center py-8 text-slate-500">No bookings found</td></tr>
+                                        <tr><td colSpan={6} className="text-center py-8 text-slate-500">No bookings found in database</td></tr>
                                     ) : (
                                         bookings.map(b => {
                                             const courtName = db.getCourts().find(c => c.id === b.courtId)?.name;
@@ -82,6 +124,15 @@ export const AdminPanel: React.FC = () => {
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+
+                        <div className="flex justify-end pt-4 border-t border-slate-100">
+                            <button 
+                                onClick={handleReset}
+                                className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 px-4 py-2 rounded-lg text-sm font-medium transition"
+                            >
+                                <Trash2 className="w-4 h-4" /> Reset Database
+                            </button>
                         </div>
                     </div>
                 )}

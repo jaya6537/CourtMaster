@@ -1,6 +1,9 @@
 import { Court, Coach, InventoryItem, PricingRule, Booking, PricingBreakdown } from '../types';
 
-// --- Seed Data ---
+// --- Database Configuration ---
+const DB_KEY = 'courtmaster_bookings_v1';
+
+// --- Seed Data (Static Config for Venue) ---
 
 const courts: Court[] = [
   { id: 'c1', name: 'Court A (Premium Indoor)', type: 'indoor', basePricePerHour: 25 },
@@ -38,17 +41,42 @@ const pricingRules: PricingRule[] = [
   },
 ];
 
-// --- In-Memory Database State ---
+// --- Active Data State ---
 let bookings: Booking[] = [];
 
-// --- Logic Services (Simulating Backend Controllers) ---
+// --- Persistence Layer ---
+const loadData = () => {
+    try {
+        const stored = localStorage.getItem(DB_KEY);
+        if (stored) {
+            bookings = JSON.parse(stored);
+            console.log(`[DB] Loaded ${bookings.length} bookings from local storage.`);
+        }
+    } catch (e) {
+        console.error("[DB] Failed to load data", e);
+        bookings = [];
+    }
+};
+
+const saveData = () => {
+    try {
+        localStorage.setItem(DB_KEY, JSON.stringify(bookings));
+    } catch (e) {
+        console.error("[DB] Failed to save data", e);
+    }
+};
+
+// Initialize DB
+loadData();
+
+// --- Logic Services ---
 
 export const db = {
   getCourts: () => courts,
   getCoaches: () => coaches,
   getInventory: () => inventory,
   getPricingRules: () => pricingRules,
-  getBookings: () => bookings,
+  getBookings: () => [...bookings], // Return copy to allow React to detect changes on new ref
 
   // Phase 3: The Availability Logic (The "Brain")
   checkAvailability: (
@@ -109,93 +137,44 @@ export const db = {
     if (!court) throw new Error("Court not found");
 
     const duration = end - start;
-    let basePrice = court.basePricePerHour * duration;
-    const modifiers: { name: string; amount: number }[] = [];
     const dateObj = new Date(date);
-    const day = dateObj.getDay(); // 0-6 (Sun-Sat) Note: String date parsing might need adjustment based on timezone, assuming local for simplified demo
+    const day = dateObj.getDay(); 
 
     // Apply Rules
-    let currentHourlyRate = court.basePricePerHour;
-    
-    // Check Weekend
-    const weekendRule = pricingRules.find(r => r.type === 'weekend');
-    if (weekendRule && weekendRule.condition?.days?.includes(day)) {
-        if (weekendRule.isMultiplier) {
-            currentHourlyRate *= weekendRule.modifier;
-            modifiers.push({ name: weekendRule.name, amount: (court.basePricePerHour * weekendRule.modifier - court.basePricePerHour) * duration });
-        } else {
-            currentHourlyRate += weekendRule.modifier;
-            modifiers.push({ name: weekendRule.name, amount: weekendRule.modifier * duration });
-        }
-    }
-
-    // Check Peak Hours (Simplified: if ANY part of booking touches peak)
-    const peakRule = pricingRules.find(r => r.type === 'peak_hour');
-    if (peakRule && peakRule.condition) {
-        // Check overlap with peak window
-        const pStart = peakRule.condition.startHour!;
-        const pEnd = peakRule.condition.endHour!;
-        // Simple logic: If booking starts or ends during peak
-        if ((start >= pStart && start < pEnd) || (end > pStart && end <= pEnd)) {
-             if (peakRule.isMultiplier) {
-                 const increase = (basePrice * peakRule.modifier) - basePrice;
-                 modifiers.push({ name: peakRule.name, amount: increase });
-                 // Update base calculation for total
-                 basePrice *= peakRule.modifier;
-             }
-        }
-    }
-
-    // Add Coach
-    let coachFee = 0;
-    if (coachId) {
-        const coach = coaches.find(c => c.id === coachId);
-        if (coach) coachFee = coach.hourlyRate * duration;
-    }
-
-    // Add Resources
-    let resourceFee = 0;
-    resources.forEach(r => {
-        const item = inventory.find(i => i.id === r.itemId);
-        if (item) resourceFee += item.pricePerSession * r.quantity;
-    });
-
-    // Re-calculate base total with modifiers added
-    // Note: The logic above for modifiers was split for display. 
-    // Let's do a simpler sum for the breakdown object.
-    const total = basePrice + modifiers.reduce((acc, m) => acc + m.amount, 0) + coachFee + resourceFee;
-    
-    // Correction: The basePrice variable was mutated by peak multiplier.
-    // Let's reset for the clean breakdown object.
-    const cleanBase = court.basePricePerHour * duration;
-    const totalModifiers = modifiers.reduce((acc, curr) => acc + curr.amount, 0);
-
-    // If peak rule multiplied the base, the difference is the modifier amount.
-    // If weekend added flat fee, that is the modifier amount.
-    
-    // Let's just trust the accumulated parts for the final sum
-    // Total = (Base * Multipliers + FlatAdders) + Coach + Resources
-    // My previous logic was slightly mixed. Let's strict sum:
-    
-    // Recalculate strictly:
     let runningRate = court.basePricePerHour;
     const activeModifiers: { name: string; amount: number }[] = [];
 
-    // Weekend
+    // Weekend Rule
+    const weekendRule = pricingRules.find(r => r.type === 'weekend');
     if (weekendRule && weekendRule.condition?.days?.includes(day)) {
-         const extra = weekendRule.modifier; // Assuming flat fee for simplicity based on mock data (5)
+         const extra = weekendRule.modifier;
          runningRate += extra;
          activeModifiers.push({ name: 'Weekend Surcharge', amount: extra * duration });
     }
 
     let seatPrice = runningRate * duration;
 
-    // Peak Multiplier on the seat price
+    // Peak Hour Rule
+    const peakRule = pricingRules.find(r => r.type === 'peak_hour');
     if (peakRule && ((start >= 18 && start < 21) || (end > 18 && end <= 21))) {
         const oldPrice = seatPrice;
         seatPrice *= peakRule.modifier;
         activeModifiers.push({ name: 'Peak Hour x' + peakRule.modifier, amount: seatPrice - oldPrice });
     }
+
+    // Coach Fee
+    let coachFee = 0;
+    if (coachId) {
+        const coach = coaches.find(c => c.id === coachId);
+        if (coach) coachFee = coach.hourlyRate * duration;
+    }
+
+    // Resource Fee
+    let resourceFee = 0;
+    resources.forEach(r => {
+        const item = inventory.find(i => i.id === r.itemId);
+        if (item) resourceFee += item.pricePerSession * r.quantity;
+    });
 
     return {
         basePrice: court.basePricePerHour * duration,
@@ -207,7 +186,7 @@ export const db = {
   },
 
   createBooking: (booking: Omit<Booking, 'id' | 'timestamp' | 'status' | 'pricing'>) => {
-    // Final atomic check
+    // Verify availability one last time
     const availability = db.checkAvailability(
         booking.date, 
         booking.startTime, 
@@ -232,13 +211,19 @@ export const db = {
 
     const newBooking: Booking = {
         ...booking,
-        id: Math.random().toString(36).substr(2, 9),
+        id: Math.random().toString(36).substr(2, 9).toUpperCase(),
         timestamp: Date.now(),
         status: 'confirmed',
         pricing
     };
 
     bookings.push(newBooking);
+    saveData(); // Persist to storage
     return newBooking;
+  },
+
+  reset: () => {
+      bookings = [];
+      saveData();
   }
 };
