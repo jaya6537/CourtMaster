@@ -43,6 +43,7 @@ const pricingRules: PricingRule[] = [
 
 // --- Active Data State ---
 let bookings: Booking[] = [];
+let subscribers: (() => void)[] = [];
 
 // --- Persistence Layer ---
 const loadData = () => {
@@ -50,7 +51,13 @@ const loadData = () => {
         const stored = localStorage.getItem(DB_KEY);
         if (stored) {
             bookings = JSON.parse(stored);
-            console.log(`[DB] Loaded ${bookings.length} bookings from local storage.`);
+            // Basic integrity check
+            if (!Array.isArray(bookings)) {
+                console.warn("[DB] Corrupt data detected, resetting DB.");
+                bookings = [];
+            } else {
+                console.log(`[DB] Hydrated ${bookings.length} bookings.`);
+            }
         }
     } catch (e) {
         console.error("[DB] Failed to load data", e);
@@ -61,22 +68,47 @@ const loadData = () => {
 const saveData = () => {
     try {
         localStorage.setItem(DB_KEY, JSON.stringify(bookings));
+        notifySubscribers();
     } catch (e) {
         console.error("[DB] Failed to save data", e);
+        alert("Database Error: Quota exceeded or storage unavailable.");
     }
+};
+
+const notifySubscribers = () => {
+    subscribers.forEach(cb => cb());
 };
 
 // Initialize DB
 loadData();
 
+// Cross-tab synchronization
+window.addEventListener('storage', (event) => {
+    if (event.key === DB_KEY) {
+        console.log("[DB] Syncing data from another tab...");
+        loadData();
+        notifySubscribers();
+    }
+});
+
 // --- Logic Services ---
 
 export const db = {
+  // Listen for changes (React hook support)
+  subscribe: (callback: () => void) => {
+      subscribers.push(callback);
+      return () => {
+          subscribers = subscribers.filter(cb => cb !== callback);
+      };
+  },
+
   getCourts: () => courts,
   getCoaches: () => coaches,
   getInventory: () => inventory,
   getPricingRules: () => pricingRules,
-  getBookings: () => [...bookings], // Return copy to allow React to detect changes on new ref
+  
+  // Returns a copy to prevent direct mutation
+  getBookings: () => [...bookings], 
 
   // Phase 3: The Availability Logic (The "Brain")
   checkAvailability: (
@@ -186,7 +218,7 @@ export const db = {
   },
 
   createBooking: (booking: Omit<Booking, 'id' | 'timestamp' | 'status' | 'pricing'>) => {
-    // Verify availability one last time
+    // Verify availability one last time (Race condition check)
     const availability = db.checkAvailability(
         booking.date, 
         booking.startTime, 
@@ -218,8 +250,18 @@ export const db = {
     };
 
     bookings.push(newBooking);
-    saveData(); // Persist to storage
+    saveData(); 
     return newBooking;
+  },
+
+  deleteBooking: (bookingId: string) => {
+      const initialLength = bookings.length;
+      bookings = bookings.filter(b => b.id !== bookingId);
+      if (bookings.length !== initialLength) {
+          saveData();
+          return true;
+      }
+      return false;
   },
 
   reset: () => {

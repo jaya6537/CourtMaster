@@ -1,30 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { Booking } from '../types';
-import { Database, Trash2, RefreshCw } from 'lucide-react';
+import { Database, Trash2, RefreshCw, AlertTriangle, XCircle, Loader2 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
     const [bookings, setBookings] = useState<Booking[]>([]);
     const [activeTab, setActiveTab] = useState<'bookings' | 'settings'>('bookings');
     const [isLoading, setIsLoading] = useState(false);
+    const [actionLoading, setActionLoading] = useState<string | null>(null); // Stores 'reset' or booking ID
 
     const refreshData = () => {
         setIsLoading(true);
-        // Simulate network delay slightly for realism
+        // Simulate network delay for realistic feel
         setTimeout(() => {
             setBookings(db.getBookings());
             setIsLoading(false);
-        }, 300);
+        }, 500);
     };
 
     useEffect(() => {
         refreshData();
+        // Subscribe to DB changes (e.g. from other tabs or internal updates)
+        const unsubscribe = db.subscribe(() => {
+            refreshData(); // Refresh triggers the loading state for visual feedback on update
+        });
+        return unsubscribe;
     }, []);
 
-    const handleReset = () => {
+    const handleReset = async () => {
         if (confirm('Are you sure you want to delete all bookings? This cannot be undone.')) {
+            setActionLoading('reset');
+            await new Promise(resolve => setTimeout(resolve, 800));
             db.reset();
             refreshData();
+            setActionLoading(null);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if(confirm(`Cancel booking ${id}?`)) {
+            setActionLoading(id);
+            await new Promise(resolve => setTimeout(resolve, 600));
+            db.deleteBooking(id);
+            setActionLoading(null);
+            // Don't need explicit refresh here as subscribe will catch it, 
+            // but for instant feedback in single-threaded context we can leave it to the subscription
         }
     };
 
@@ -48,10 +68,11 @@ export const AdminPanel: React.FC = () => {
                 <div className="flex gap-3">
                     <button 
                          onClick={refreshData}
-                         className="p-2 text-slate-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition"
+                         disabled={isLoading}
+                         className="p-2 text-slate-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition disabled:opacity-50"
                          title="Refresh Data"
                     >
-                        <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin text-brand-600' : ''}`} />
                     </button>
                     <div className="flex bg-slate-100 p-1 rounded-lg">
                         <button 
@@ -98,11 +119,12 @@ export const AdminPanel: React.FC = () => {
                                         <th className="px-4 py-3 font-semibold text-slate-700">Court</th>
                                         <th className="px-4 py-3 font-semibold text-slate-700">Extras</th>
                                         <th className="px-4 py-3 text-right font-semibold text-slate-700">Amount</th>
+                                        <th className="px-4 py-3 text-center font-semibold text-slate-700">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white">
                                     {bookings.length === 0 ? (
-                                        <tr><td colSpan={6} className="text-center py-8 text-slate-500">No bookings found in database</td></tr>
+                                        <tr><td colSpan={7} className="text-center py-8 text-slate-500">No bookings found in database</td></tr>
                                     ) : (
                                         bookings.map(b => {
                                             const courtName = db.getCourts().find(c => c.id === b.courtId)?.name;
@@ -118,6 +140,20 @@ export const AdminPanel: React.FC = () => {
                                                         {!b.coachId && b.resources.length === 0 ? '-' : ''}
                                                     </td>
                                                     <td className="px-4 py-3 text-right font-bold text-slate-900">${b.pricing.total.toFixed(2)}</td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <button 
+                                                            onClick={() => handleDelete(b.id)}
+                                                            disabled={!!actionLoading}
+                                                            className="text-slate-400 hover:text-red-600 transition p-1 disabled:opacity-30"
+                                                            title="Cancel Booking"
+                                                        >
+                                                            {actionLoading === b.id ? (
+                                                                <Loader2 className="w-5 h-5 animate-spin text-red-500" />
+                                                            ) : (
+                                                                <XCircle className="w-5 h-5" />
+                                                            )}
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             );
                                         })
@@ -126,12 +162,22 @@ export const AdminPanel: React.FC = () => {
                             </table>
                         </div>
 
-                        <div className="flex justify-end pt-4 border-t border-slate-100">
+                        <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+                            <div className="text-xs text-slate-400 flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                <span>Simulated Admin Actions (Authorized)</span>
+                            </div>
                             <button 
                                 onClick={handleReset}
-                                className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 px-4 py-2 rounded-lg text-sm font-medium transition"
+                                disabled={!!actionLoading}
+                                className="flex items-center gap-2 text-red-600 hover:text-red-700 hover:bg-red-50 px-4 py-2 rounded-lg text-sm font-medium transition disabled:opacity-50"
                             >
-                                <Trash2 className="w-4 h-4" /> Reset Database
+                                {actionLoading === 'reset' ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                )}
+                                Reset Database
                             </button>
                         </div>
                     </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { Court, Coach, InventoryItem, Booking, PricingBreakdown } from '../types';
-import { Calendar, Clock, User, Zap, ChevronRight, CheckCircle, AlertCircle, DollarSign, Package } from 'lucide-react';
+import { Calendar, Clock, User, Zap, ChevronRight, CheckCircle, AlertCircle, DollarSign, Package, Loader2 } from 'lucide-react';
 
 export const BookingSystem: React.FC = () => {
   // State
@@ -13,6 +13,7 @@ export const BookingSystem: React.FC = () => {
   const [selectedResources, setSelectedResources] = useState<{ [key: string]: number }>({});
   const [bookingSuccess, setBookingSuccess] = useState<Booking | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isBooking, setIsBooking] = useState(false);
   
   // Computed Pricing
   const [currentPrice, setCurrentPrice] = useState<PricingBreakdown | null>(null);
@@ -38,11 +39,15 @@ export const BookingSystem: React.FC = () => {
     }
   }, [selectedCourt, selectedTime, selectedDate, selectedCoach, selectedResources]);
 
-  const handleBooking = () => {
+  const handleBooking = async () => {
     if (!selectedCourt || !selectedTime) return;
     setError(null);
+    setIsBooking(true);
 
     try {
+      // Simulate network latency for better UX
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       const resourceArray = Object.entries(selectedResources).map(([id, qty]) => ({ itemId: id, quantity: qty as number }));
       
       const newBooking = db.createBooking({
@@ -60,6 +65,8 @@ export const BookingSystem: React.FC = () => {
       setStep(4);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setIsBooking(false);
     }
   };
 
@@ -126,7 +133,7 @@ export const BookingSystem: React.FC = () => {
         
         {/* Step 1: Date & Time */}
         <div className={`bg-white rounded-2xl p-6 shadow-sm border-2 ${step === 1 ? 'border-brand-500 ring-4 ring-brand-50/50' : 'border-transparent'}`}>
-            <div className="flex items-center justify-between mb-4 cursor-pointer" onClick={() => setStep(1)}>
+            <div className="flex items-center justify-between mb-4 cursor-pointer" onClick={() => !isBooking && setStep(1)}>
                 <h3 className="text-lg font-bold font-display flex items-center gap-2 text-slate-900">
                     <span className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-sm font-bold">1</span>
                     Select Date & Time
@@ -185,7 +192,7 @@ export const BookingSystem: React.FC = () => {
 
         {/* Step 2: Court Selection */}
         <div className={`bg-white rounded-2xl p-6 shadow-sm border-2 ${step === 2 ? 'border-brand-500 ring-4 ring-brand-50/50' : 'border-transparent'}`}>
-            <div className="flex items-center justify-between mb-4 cursor-pointer" onClick={() => step > 2 && setStep(2)}>
+            <div className="flex items-center justify-between mb-4 cursor-pointer" onClick={() => !isBooking && step > 2 && setStep(2)}>
                  <h3 className="text-lg font-bold font-display flex items-center gap-2 text-slate-900">
                     <span className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-sm font-bold">2</span>
                     Choose Court
@@ -307,12 +314,21 @@ export const BookingSystem: React.FC = () => {
                     </div>
 
                     <div className="flex justify-end pt-4 gap-3">
-                        <button onClick={() => setStep(2)} className="text-slate-500 font-medium px-4 hover:text-slate-700">Back</button>
+                        <button onClick={() => !isBooking && setStep(2)} disabled={isBooking} className="text-slate-500 font-medium px-4 hover:text-slate-700 disabled:opacity-50">Back</button>
                         <button 
                             onClick={handleBooking}
-                            className="bg-brand-600 text-white px-8 py-3 rounded-lg font-bold shadow-lg shadow-brand-500/30 hover:shadow-brand-500/50 hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                            disabled={isBooking}
+                            className="bg-brand-600 text-white px-8 py-3 rounded-lg font-bold shadow-lg shadow-brand-500/30 hover:shadow-brand-500/50 hover:-translate-y-0.5 transition-all flex items-center gap-2 disabled:opacity-70 disabled:hover:translate-y-0 disabled:hover:shadow-none"
                         >
-                            Confirm Booking <CheckCircle className="w-5 h-5" />
+                            {isBooking ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" /> Processing...
+                                </>
+                            ) : (
+                                <>
+                                    Confirm Booking <CheckCircle className="w-5 h-5" />
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>
