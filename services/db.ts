@@ -46,7 +46,10 @@ let bookings: Booking[] = [];
 let subscribers: (() => void)[] = [];
 
 // --- Persistence Layer ---
+const isBrowser = typeof window !== 'undefined' && window.localStorage;
+
 const loadData = () => {
+    if (!isBrowser) return;
     try {
         const stored = localStorage.getItem(DB_KEY);
         if (stored) {
@@ -66,6 +69,7 @@ const loadData = () => {
 };
 
 const saveData = () => {
+    if (!isBrowser) return;
     try {
         localStorage.setItem(DB_KEY, JSON.stringify(bookings));
         notifySubscribers();
@@ -83,13 +87,15 @@ const notifySubscribers = () => {
 loadData();
 
 // Cross-tab synchronization
-window.addEventListener('storage', (event) => {
-    if (event.key === DB_KEY) {
-        console.log("[DB] Syncing data from another tab...");
-        loadData();
-        notifySubscribers();
-    }
-});
+if (isBrowser) {
+    window.addEventListener('storage', (event) => {
+        if (event.key === DB_KEY) {
+            console.log("[DB] Syncing data from another tab...");
+            loadData();
+            notifySubscribers();
+        }
+    });
+}
 
 // --- Logic Services ---
 

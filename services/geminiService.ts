@@ -1,7 +1,8 @@
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { db } from "./db";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Remove top-level initialization to prevent "process is not defined" errors during app load
+// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const getContextData = () => {
     const courts = db.getCourts().map(c => c.name).join(", ");
@@ -10,6 +11,17 @@ const getContextData = () => {
 }
 
 export const createChatSession = (): Chat => {
+  // Access process.env inside the function to ensure it doesn't crash the app at startup
+  // We add a safety check for 'process' to avoid ReferenceErrors in strict browser environments
+  let apiKey = '';
+  try {
+    apiKey = process.env.API_KEY || '';
+  } catch (e) {
+    console.error("Failed to access process.env.API_KEY. Ensure your environment variables are set.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
   const context = getContextData();
   const SYSTEM_INSTRUCTION = `
     You are "CourtMaster AI", an assistant for a sports facility.
