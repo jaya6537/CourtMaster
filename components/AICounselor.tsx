@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, AlertCircle, WifiOff } from 'lucide-react';
 import { createChatSession, sendMessageStream } from '../services/geminiService';
 import { ChatMessage } from '../types';
 import { Chat, GenerateContentResponse } from "@google/genai";
@@ -16,12 +16,23 @@ export const AICounselor: React.FC = () => {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isServiceAvailable, setIsServiceAvailable] = useState(true);
   
   const chatSessionRef = useRef<Chat | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    chatSessionRef.current = createChatSession();
+    try {
+      chatSessionRef.current = createChatSession();
+    } catch (e) {
+      console.warn("AI Initialization Failed:", e);
+      setIsServiceAvailable(false);
+      setMessages([{
+        id: 'error-init',
+        role: 'model',
+        text: "I'm currently offline due to a configuration issue (Missing API Key). You can still use the booking system manually!"
+      }]);
+    }
   }, []);
 
   useEffect(() => {
@@ -81,12 +92,18 @@ export const AICounselor: React.FC = () => {
   return (
     <div className="flex flex-col h-[500px] w-full bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
       <div className="bg-slate-900 p-4 flex items-center gap-3">
-        <div className="p-2 bg-neon-500 rounded-lg">
-          <Bot className="w-5 h-5 text-slate-900" />
+        <div className={`p-2 rounded-lg ${isServiceAvailable ? 'bg-neon-500' : 'bg-slate-700'}`}>
+          {isServiceAvailable ? (
+             <Bot className="w-5 h-5 text-slate-900" />
+          ) : (
+             <WifiOff className="w-5 h-5 text-slate-400" />
+          )}
         </div>
         <div>
           <h3 className="text-white font-bold font-display">CourtMaster AI</h3>
-          <p className="text-slate-400 text-xs">Venue Assistant</p>
+          <p className="text-slate-400 text-xs">
+            {isServiceAvailable ? 'Venue Assistant' : 'Offline'}
+          </p>
         </div>
       </div>
 
@@ -115,10 +132,15 @@ export const AICounselor: React.FC = () => {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about prices..."
-            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:ring-2 focus:ring-brand-500 outline-none"
+            disabled={!isServiceAvailable}
+            placeholder={isServiceAvailable ? "Ask about prices..." : "AI Service Unavailable"}
+            className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm text-slate-900 placeholder:text-slate-500 focus:ring-2 focus:ring-brand-500 outline-none disabled:opacity-50 disabled:cursor-not-allowed"
           />
-          <button onClick={handleSend} disabled={!inputText.trim() || isLoading} className="p-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50">
+          <button 
+            onClick={handleSend} 
+            disabled={!inputText.trim() || isLoading || !isServiceAvailable} 
+            className="p-2 bg-brand-600 text-white rounded-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <Send className="w-4 h-4" />
           </button>
         </div>

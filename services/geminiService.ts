@@ -1,9 +1,6 @@
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { db } from "./db";
 
-// Remove top-level initialization to prevent "process is not defined" errors during app load
-// const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const getContextData = () => {
     const courts = db.getCourts().map(c => c.name).join(", ");
     const coaches = db.getCoaches().map(c => `${c.name} (${c.specialty})`).join(", ");
@@ -11,9 +8,19 @@ const getContextData = () => {
 }
 
 export const createChatSession = (): Chat => {
-  // Access process.env inside the function to ensure it doesn't crash the app at startup
-  // According to guidelines, we must use process.env.API_KEY directly.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Safe access to API Key to prevent ReferenceErrors in some browser environments
+  let apiKey: string | undefined;
+  try {
+    apiKey = process.env.API_KEY;
+  } catch (e) {
+    // process is not defined
+  }
+
+  if (!apiKey) {
+    throw new Error("Gemini API Key is missing. Please configure process.env.API_KEY in your environment.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
 
   const context = getContextData();
   const SYSTEM_INSTRUCTION = `
